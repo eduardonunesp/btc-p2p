@@ -1,5 +1,5 @@
 [package]
-name = "btc-handshake"
+name = "btc-proto-handshake"
 version = "0.1.0"
 edition = "2021"
 
@@ -15,3 +15,4 @@ anyhow = "1.0.75"
 byteorder = "1.5.0"
 hex = "0.4.3"
 sha2 = "0.10.6"
+rand = "0.8.5"

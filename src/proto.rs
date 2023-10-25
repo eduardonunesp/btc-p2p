@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use anyhow::Ok;
+use anyhow::{bail, Ok};
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use sha2::{Digest, Sha256};
 
@@ -21,15 +21,17 @@ const HEADER_CHECKSUM_RANGE: std::ops::Range<usize> = 20..24;
 
 #[derive(Debug)]
 pub enum Command {
-    NoOp,
+    Pong,
     Ping,
     Version,
+    VerAck,
 }
 
 impl Command {
     pub fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
         match self {
-            Command::NoOp => Ok(vec![]),
+            Command::VerAck => Ok("verack".as_bytes().into()),
+            Command::Pong => Ok("".as_bytes().into()),
             Command::Ping => Ok("ping".as_bytes().into()),
             Command::Version => Ok("version".as_bytes().into()),
         }
@@ -39,6 +41,7 @@ impl Command {
         let command = String::from_utf8(bytes.to_vec())?.replace('\0', "");
 
         Ok(match command.as_str() {
+            "verack" => Self::VerAck,
             "ping" => Self::Ping,
             "version" => Self::Version,
             c => {
@@ -52,6 +55,7 @@ impl Command {
 #[derive(Debug)]
 pub enum Payload {
     Empty,
+    VerAck,
     Ping(u64),
     Version(VersionPayload),
 }
@@ -59,7 +63,8 @@ pub enum Payload {
 impl Payload {
     pub fn to_bytes(&self) -> anyhow::Result<Vec<u8>> {
         match self {
-            Payload::Empty => Ok(vec![]),
+            Payload::Empty => bail!("Empty payload not supported"),
+            Payload::VerAck => Ok(vec![]),
             Payload::Ping(nonce) => {
                 let mut buf: Vec<u8> = vec![];
                 buf.write_u64::<LittleEndian>(nonce.to_owned())?;
@@ -88,34 +93,35 @@ impl Payload {
 
     pub fn from_bytes(command: &Command, bytes: &[u8]) -> anyhow::Result<Self> {
         match command {
-            Command::NoOp => Ok(Self::Empty),
+            Command::VerAck => Ok(Self::Empty),
+            Command::Pong => Ok(Self::Empty),
             Command::Ping => {
-                let mut buf = bytes;
-                let nonce = buf.read_u64::<LittleEndian>()?;
+                let mut buffer = bytes;
+                let nonce = buffer.read_u64::<LittleEndian>()?;
                 Ok(Self::Ping(nonce))
             }
             Command::Version => {
-                let mut buf = bytes;
+                let mut buffer = bytes;
                 let version_payload = VersionPayload {
-                    version: buf.read_i32::<LittleEndian>()?,
-                    services: buf.read_u64::<LittleEndian>()?,
-                    timestamp: buf.read_i64::<LittleEndian>()?,
-                    addr_recv_serv: buf.read_u64::<LittleEndian>()?,
-                    addr_recv: buf.read_u128::<BigEndian>()?.to_ne_bytes(),
-                    addr_recv_port: buf.read_u16::<BigEndian>()?,
-                    addr_trans_serv: buf.read_u64::<LittleEndian>()?,
-                    addr_trans: buf.read_u128::<BigEndian>()?.to_ne_bytes(),
-                    addr_trans_port: buf.read_u16::<BigEndian>()?,
-                    nonce: buf.read_u64::<LittleEndian>()?,
+                    version: buffer.read_i32::<LittleEndian>()?,
+                    services: buffer.read_u64::<LittleEndian>()?,
+                    timestamp: buffer.read_i64::<LittleEndian>()?,
+                    addr_recv_serv: buffer.read_u64::<LittleEndian>()?,
+                    addr_recv: buffer.read_u128::<BigEndian>()?.to_ne_bytes(),
+                    addr_recv_port: buffer.read_u16::<BigEndian>()?,
+                    addr_trans_serv: buffer.read_u64::<LittleEndian>()?,
+                    addr_trans: buffer.read_u128::<BigEndian>()?.to_ne_bytes(),
+                    addr_trans_port: buffer.read_u16::<BigEndian>()?,
+                    nonce: buffer.read_u64::<LittleEndian>()?,
                     user_agent: {
-                        let mut tmp_buf = vec![0u8; 0];
-                        let user_agent_len = buf.read_u8()?;
+                        let mut tmp_buffer = vec![0u8; 0];
+                        let user_agent_len = buffer.read_u8()?;
                         let user_agent_bytes = vec![0u8; user_agent_len as usize];
-                        buf.read_exact(&mut tmp_buf)?;
+                        buffer.read_exact(&mut tmp_buffer)?;
                         String::from_utf8(user_agent_bytes)?
                     },
-                    start_height: buf.read_i32::<LittleEndian>()?,
-                    relay: buf.read_u8()? != 0x00,
+                    start_height: buffer.read_i32::<LittleEndian>()?,
+                    relay: buffer.read_u8()? != 0x00,
                 };
 
                 Ok(Self::Version(version_payload))
@@ -142,15 +148,22 @@ pub struct VersionPayload {
 }
 
 #[derive(Debug)]
-pub struct MessageHeader {
+pub struct Message {
     pub start_string: [u8; 4],
     pub command: Command,
     pub payload: Payload,
 }
 
-impl MessageHeader {
-    pub fn new(command: Command, payload: Payload) -> Self {
+impl Message {
+    pub fn new(payload: Payload) -> Self {
         let start_string = START_STRING;
+        let command = match payload {
+            Payload::Empty => Command::Pong,
+            Payload::VerAck => Command::VerAck,
+            Payload::Ping(_) => Command::Ping,
+            Payload::Version(_) => Command::Version,
+        };
+
         Self {
             start_string,
             command,
@@ -224,7 +237,6 @@ impl MessageHeader {
     }
 }
 
-/// Computes Bitcoin checksum for given data
 pub fn checksum(data: &[u8]) -> [u8; 4] {
     let mut hasher = Sha256::new();
     hasher.update(data);
@@ -234,10 +246,10 @@ pub fn checksum(data: &[u8]) -> [u8; 4] {
     hasher.update(hash);
     let hash = hasher.finalize();
 
-    let mut buf = [0u8; CHECKSUM_SIZE];
-    buf.clone_from_slice(&hash[..CHECKSUM_SIZE]);
+    let mut buffer = [0u8; CHECKSUM_SIZE];
+    buffer.clone_from_slice(&hash[..CHECKSUM_SIZE]);
 
-    buf
+    buffer
 }
 
 #[cfg(test)]
@@ -257,6 +269,6 @@ mod tests {
         let payload = Payload::Ping(256);
         let bytes = payload.to_bytes().unwrap();
 
-        assert_eq!(bytes, vec![0, 0, 0, 0, 0, 0, 1, 0]);
+        assert_eq!(bytes, vec![0, 1, 0, 0, 0, 0, 0, 0]);
     }
 }
