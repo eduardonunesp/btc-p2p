@@ -1,6 +1,4 @@
-#![allow(unused)]
-// #![warn(unused_crate_dependencies)]
-// #![deny(unused_must_use, rust_2018_idioms)]
+#![deny(unused_must_use, rust_2018_idioms)]
 
 //! Bitcoin p2p protocol implementation
 //!

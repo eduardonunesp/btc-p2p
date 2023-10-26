@@ -1,6 +1,6 @@
 use super::{
     encode::{Decodable, Encodable},
-    errors::Result,
+    errors::{BTCP2PError, Result},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -29,7 +29,7 @@ impl Command {
             "verack" => Self::VerAck,
             "ping" => Self::Ping,
             "pong" => Self::Pong,
-            c => Self::Version,
+            _ => return Err(BTCP2PError::InvalidCommand),
         })
     }
 }

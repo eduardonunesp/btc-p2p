@@ -1,14 +1,14 @@
 use byteorder::{BigEndian, LittleEndian, ReadBytesExt, WriteBytesExt};
 use std::{
-    io::{Cursor, Read, Write},
-    net::{Ipv6Addr, SocketAddr},
+    io::{Read, Write},
+    net::SocketAddr,
     time::SystemTime,
 };
 
 use super::{
     command::Command,
     encode::{Decodable, Encodable},
-    errors::{BTCP2PError, Result},
+    errors::Result,
 };
 
 const PROTOCOL_VERSION: i32 = 70015;
