@@ -10,8 +10,13 @@ use tokio::{
     time::timeout,
 };
 
+/// This example connects to a Bitcoin node and performs a handshake.
 const BTC_SEED: &str = "seed.bitcoin.sipa.be";
+
+/// The port of the Bitcoin node.
 const BTC_NODE_PORT: u16 = 8333;
+
+/// The size of the channels used to communicate between the threads.
 const CHANNELS_BUFFER_SIZE: usize = 1;
 
 #[tokio::main]
@@ -22,10 +27,12 @@ async fn main() -> anyhow::Result<()> {
 
     tracing::info!("Getting seed from{}", BTC_SEED);
 
+    // Get the addresses of the Bitcoin nodes.
     let addrs = lookup_host((BTC_SEED, BTC_NODE_PORT))
         .await?
         .collect::<Vec<_>>();
 
+    // Spawn a thread that sends the addresses to the channel.
     tokio::spawn(async move {
         for addr in addrs {
             if let Err(err) = socket_chan_tx.send(addr).await {
@@ -36,6 +43,7 @@ async fn main() -> anyhow::Result<()> {
 
     let wg = WaitGroup::new();
 
+    // Spawn a thread for each address received from the channel.
     while let Some(socket) = socket_chan_rx.recv().await {
         let wg = wg.clone();
 
@@ -56,16 +64,20 @@ async fn main() -> anyhow::Result<()> {
         });
     }
 
+    // Wait for all the threads to finish.
     wg.wait();
 
     Ok(())
 }
 
+// Performs a handshake with the Bitcoin node.
 async fn handshake(socket: SocketAddr) -> anyhow::Result<()> {
     tracing::info!("Connecting to {}", socket);
 
+    // Connect to the Bitcoin node.
     let mut tcp_stream = TcpStream::connect(socket).await?;
 
+    // Build the version message, which is the first message sent to the Bitcoin node.
     let version_msg = Message::new(
         Network::MainNet,
         Command::Version,
@@ -81,10 +93,12 @@ async fn handshake(socket: SocketAddr) -> anyhow::Result<()> {
         ),
     );
 
+    // Send the version message and wait for the response.
     tracing::info!("Sending version to {}", socket);
     let msg_recv = send_and_receive(&mut tcp_stream, version_msg).await?;
     tracing::info!("Received version {:?} from {}", msg_recv.payload, socket);
 
+    // Send the verack message, to confirm the version message.
     let verack_msg = Message::new(Network::MainNet, Command::VerAck, Payload::VerAck);
     tracing::info!("Sending verack to {}", socket);
     let msg_recv = send_and_receive(&mut tcp_stream, verack_msg).await?;
