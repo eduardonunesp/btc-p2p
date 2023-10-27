@@ -1,26 +1,20 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sha2::{Digest, Sha256};
 use std::io::Write;
-use Ok;
 
-use super::errors::BTCP2PError;
+use super::{
+    command::Command,
+    errors::{BTCP2PError, Result},
+    network::Network,
+    payload::Payload,
+    CHECKSUM_SIZE, HEADER_CHECKSUM_RANGE, HEADER_COMMAND_NAME_RANGE, HEADER_PAYLOAD_LEN_RANGE,
+    HEADER_SIZE, HEADER_START_STRING_RANGE, MAX_PAYLOAD_SIZE,
+};
 
-use super::{command::Command, errors::Result, network::Network, payload::Payload};
-
-const START_STRING_SIZE: usize = 4;
-const COMMAND_NAME_SIZE: usize = 12;
-const PAYLOAD_LEN_SIZE: usize = 4;
-const CHECKSUM_SIZE: usize = 4;
-const HEADER_SIZE: usize = START_STRING_SIZE + COMMAND_NAME_SIZE + PAYLOAD_LEN_SIZE + CHECKSUM_SIZE;
-
-// 32 MB
-const MAX_PAYLOAD_SIZE: usize = 32 * 1024 * 1024;
-
-const HEADER_START_STRING_RANGE: std::ops::Range<usize> = 0..4;
-const HEADER_COMMAND_NAME_RANGE: std::ops::Range<usize> = 4..16;
-const HEADER_PAYLOAD_LEN_RANGE: std::ops::Range<usize> = 16..20;
-const HEADER_CHECKSUM_RANGE: std::ops::Range<usize> = 20..24;
-
+/// Message represents a message in the BTC proto
+/// Contains the network, command and payload
+///
+/// All messages in the network protocol use the same container format, which provides a required multi-field message header and an optional payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message {
     pub network: Network,
@@ -37,6 +31,8 @@ impl Message {
         }
     }
 
+    /// Converts the message to bytes
+    /// Bytes are contained in a Vec<u8>
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         // buffer for the BTC proto: https://developer.bitcoin.org/reference/p2p_networking.html#message-headers
         let payload_bytes = self.payload.to_bytes()?;
@@ -48,9 +44,6 @@ impl Message {
         // command name char[12]
         let command_bytes = self.command.to_bytes()?;
         buffer.extend(&command_bytes);
-
-        // padding char[..]
-        (0..COMMAND_NAME_SIZE - command_bytes.len()).try_for_each(|_| buffer.write_u8(0x0))?;
 
         // payload length uint32 (4 bytes)
         buffer.write_u32::<LittleEndian>(payload_bytes.len() as u32)?;
@@ -66,6 +59,8 @@ impl Message {
         Ok(buffer)
     }
 
+    /// Converts bytes to a message
+    /// Bytes are contained in a slice of u8
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < HEADER_SIZE {
             return Err(BTCP2PError::InvalidHeaderSize);
@@ -102,6 +97,7 @@ impl Message {
         })
     }
 
+    /// Calculates the checksum of the payload
     fn checksum(data: &[u8]) -> [u8; 4] {
         let mut hasher = Sha256::new();
         hasher.update(data);
@@ -120,8 +116,6 @@ impl Message {
 
 #[cfg(test)]
 mod tests {
-    use std::io::Cursor;
-
     use crate::VersionPayload;
 
     use super::*;

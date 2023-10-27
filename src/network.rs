@@ -1,9 +1,18 @@
 use super::errors::{BTCP2PError, Result};
 
+/// Represents the network to which a message belongs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Network {
+    /// Mainnet
+    /// Default Port 8333
     MainNet,
+
+    /// Testnet
+    /// Default Port 18333
     TestNet,
+
+    /// Regtest
+    /// Default Port 18444
     RegTest,
 }
 

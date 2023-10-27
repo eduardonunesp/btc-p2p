@@ -2,6 +2,7 @@ use thiserror::Error;
 
 pub type Result<T> = std::result::Result<T, BTCP2PError>;
 
+///! BTCP2PError represents an error in the BTC proto
 #[derive(Debug, Error)]
 pub enum BTCP2PError {
     #[error("Unknown network")]
