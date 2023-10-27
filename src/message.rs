@@ -21,6 +21,7 @@ const HEADER_COMMAND_NAME_RANGE: std::ops::Range<usize> = 4..16;
 const HEADER_PAYLOAD_LEN_RANGE: std::ops::Range<usize> = 16..20;
 const HEADER_CHECKSUM_RANGE: std::ops::Range<usize> = 20..24;
 
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message {
     pub network: Network,
     pub command: Command,
@@ -114,5 +115,42 @@ impl Message {
         buffer.clone_from_slice(&hash[..CHECKSUM_SIZE]);
 
         buffer
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::io::Cursor;
+
+    use crate::VersionPayload;
+
+    use super::*;
+    use quickcheck::{Arbitrary, TestResult};
+    use quickcheck_macros::quickcheck;
+
+    impl Arbitrary for Message {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            let network = Network::arbitrary(g);
+            let command = Command::arbitrary(g);
+            let payload = match command {
+                Command::Version => Payload::Version(VersionPayload::arbitrary(g)),
+                Command::VerAck => Payload::VerAck,
+                Command::Ping => Payload::Ping(u64::arbitrary(g)),
+                Command::Pong => Payload::Pong(u64::arbitrary(g)),
+            };
+
+            Self {
+                network,
+                command,
+                payload,
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn test_to_bytes(message: Message) -> TestResult {
+        let bytes = message.to_bytes().unwrap();
+        let message2 = Message::from_bytes(&bytes).unwrap();
+        TestResult::from_bool(message == message2)
     }
 }

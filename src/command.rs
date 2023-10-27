@@ -34,25 +34,26 @@ impl Command {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quickcheck::{Arbitrary, TestResult};
+    use quickcheck_macros::quickcheck;
 
-    #[test]
-    fn test_to_bytes() {
-        assert_eq!(
-            Command::to_bytes(&Command::Version).unwrap(),
-            "version".as_bytes(),
-        );
-        assert_eq!(
-            Command::to_bytes(&Command::VerAck).unwrap(),
-            "verack".as_bytes(),
-        );
-        assert_eq!(
-            Command::to_bytes(&Command::Ping).unwrap(),
-            "ping".as_bytes(),
-        );
-        assert_eq!(
-            Command::to_bytes(&Command::Pong).unwrap(),
-            "pong".as_bytes(),
-        );
+    impl Arbitrary for Command {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            match u8::arbitrary(g) % 4 {
+                0 => Self::Version,
+                1 => Self::VerAck,
+                2 => Self::Ping,
+                3 => Self::Pong,
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn test_to_bytes(command: Command) -> TestResult {
+        let bytes = command.to_bytes().unwrap();
+        let command2 = Command::from_bytes(&bytes).unwrap();
+        TestResult::from_bool(command == command2)
     }
 
     #[test]

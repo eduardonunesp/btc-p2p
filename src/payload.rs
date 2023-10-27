@@ -9,7 +9,7 @@ use super::{command::Command, errors::Result};
 
 const PROTOCOL_VERSION: i32 = 70015;
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Payload {
     Version(VersionPayload),
     VerAck,
@@ -34,7 +34,7 @@ impl Payload {
             Command::Version => Ok(Payload::Version(VersionPayload::from_bytes(&bytes)?)),
             Command::VerAck => Ok(Payload::VerAck),
             Command::Ping => Ok(Payload::Ping(u64::from_le_bytes(bytes.try_into()?))),
-            Command::Pong => Ok(Payload::Empty),
+            Command::Pong => Ok(Payload::Pong(u64::from_le_bytes(bytes.try_into()?))),
         }
     }
 }
@@ -67,6 +67,11 @@ impl ServiceFlags {
     pub fn to_u64(self) -> u64 {
         self.0
     }
+
+    /// Gets the ServiceFlags from an integer representation
+    pub fn from_u64(n: u64) -> Self {
+        ServiceFlags(n)
+    }
 }
 
 impl From<u64> for ServiceFlags {
@@ -75,7 +80,7 @@ impl From<u64> for ServiceFlags {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct VersionPayload {
     pub version: i32,
     pub services: u64,
@@ -117,7 +122,7 @@ impl VersionPayload {
         const CARGO_PKG_VERSION: &str = env!("CARGO_PKG_VERSION");
         const CARGO_PKG_NAME: &str = env!("CARGO_PKG_NAME");
 
-        let user_agent = format!("{}:{}", CARGO_PKG_NAME, CARGO_PKG_VERSION).to_string();
+        let user_agent = format!("/{}:{}/", CARGO_PKG_NAME, CARGO_PKG_VERSION).to_string();
 
         Payload::Version(VersionPayload {
             version: PROTOCOL_VERSION,
@@ -143,10 +148,10 @@ impl VersionPayload {
         buffer.write_i64::<LittleEndian>(self.timestamp)?;
         buffer.write_u64::<LittleEndian>(self.addr_recv_serv)?;
         buffer.write_u128::<BigEndian>(u128::from_ne_bytes(self.addr_recv))?;
-        buffer.write_u16::<LittleEndian>(self.addr_recv_port)?;
+        buffer.write_u16::<BigEndian>(self.addr_recv_port)?;
         buffer.write_u64::<LittleEndian>(self.addr_trans_serv)?;
         buffer.write_u128::<BigEndian>(u128::from_ne_bytes(self.addr_trans))?;
-        buffer.write_u16::<LittleEndian>(self.addr_trans_port)?;
+        buffer.write_u16::<BigEndian>(self.addr_trans_port)?;
         buffer.write_u64::<LittleEndian>(self.nonce)?;
         buffer.write_u8(self.user_agent.len() as u8)?;
         buffer.write_all(self.user_agent.as_bytes())?;
@@ -190,5 +195,73 @@ impl VersionPayload {
             .octets(),
             socket.port(),
         )
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use quickcheck::{Arbitrary, TestResult};
+    use quickcheck_macros::quickcheck;
+
+    impl Arbitrary for Payload {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Payload {
+            VersionPayload::build(
+                ServiceFlags::from_u64(u64::arbitrary(g)),
+                ServiceFlags::from_u64(u64::arbitrary(g)),
+                SocketAddr::arbitrary(g),
+                ServiceFlags::from_u64(u64::arbitrary(g)),
+                SocketAddr::arbitrary(g),
+                u64::arbitrary(g),
+                i32::arbitrary(g),
+                bool::arbitrary(g),
+            )
+        }
+    }
+
+    impl Arbitrary for VersionPayload {
+        fn arbitrary(g: &mut quickcheck::Gen) -> VersionPayload {
+            VersionPayload {
+                version: i32::arbitrary(g),
+                services: u64::arbitrary(g),
+                timestamp: i64::arbitrary(g),
+                addr_recv_serv: u64::arbitrary(g),
+                addr_recv: [u8::arbitrary(g); 16],
+                addr_recv_port: u16::arbitrary(g),
+                addr_trans_serv: u64::arbitrary(g),
+                addr_trans: [u8::arbitrary(g); 16],
+                addr_trans_port: u16::arbitrary(g),
+                nonce: u64::arbitrary(g),
+                user_agent: "".to_string(),
+                start_height: i32::arbitrary(g),
+                relay: bool::arbitrary(g),
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn payload_from_bytes(payload: Payload) {
+        let bytes = payload.to_bytes().unwrap();
+        let _ = Payload::from_bytes(&Command::Version, &bytes[12..]).unwrap();
+    }
+
+    #[quickcheck]
+    fn check_protocol_version(payload: Payload) -> TestResult {
+        match payload {
+            Payload::Version(version_payload) => {
+                if version_payload.version == PROTOCOL_VERSION {
+                    TestResult::passed()
+                } else {
+                    TestResult::failed()
+                }
+            }
+            _ => TestResult::discard(),
+        }
+    }
+
+    #[quickcheck]
+    fn version_data_from_bytes(version_payload: VersionPayload) {
+        let bytes = version_payload.to_bytes().unwrap();
+        let _ = VersionPayload::from_bytes(&bytes).unwrap();
     }
 }
