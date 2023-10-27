@@ -1,7 +1,4 @@
-use super::{
-    encode::{Decodable, Encodable},
-    errors::{BTCP2PError, Result},
-};
+use super::errors::{BTCP2PError, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
@@ -31,18 +28,6 @@ impl Command {
             "pong" => Self::Pong,
             _ => return Err(BTCP2PError::InvalidCommand),
         })
-    }
-}
-
-impl Encodable for Command {
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        Command::to_bytes(self)
-    }
-}
-
-impl Decodable for Command {
-    fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        Command::from_bytes(bytes)
     }
 }
 

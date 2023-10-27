@@ -5,7 +5,6 @@
 //! This crate provides a pure Rust implementation of the Bitcoin protocol.
 
 mod command;
-mod encode;
 mod errors;
 mod message;
 mod network;

@@ -1,7 +1,4 @@
-use super::{
-    encode::{Decodable, Encodable},
-    errors::{BTCP2PError, Result},
-};
+use super::errors::{BTCP2PError, Result};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Network {
@@ -26,18 +23,6 @@ impl Network {
             [0xfa, 0xbf, 0xb5, 0xda] => Ok(Self::RegTest),
             _ => Err(BTCP2PError::UnknowNetwork),
         }
-    }
-}
-
-impl Encodable for Network {
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        Ok(Network::to_bytes(*self).to_vec())
-    }
-}
-
-impl Decodable for Network {
-    fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        Network::from_bytes(bytes)
     }
 }
 

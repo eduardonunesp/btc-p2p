@@ -5,11 +5,7 @@ use std::{
     time::SystemTime,
 };
 
-use super::{
-    command::Command,
-    encode::{Decodable, Encodable},
-    errors::Result,
-};
+use super::{command::Command, errors::Result};
 
 const PROTOCOL_VERSION: i32 = 70015;
 
@@ -40,12 +36,6 @@ impl Payload {
             Command::Ping => Ok(Payload::Ping(u64::from_le_bytes(bytes.try_into()?))),
             Command::Pong => Ok(Payload::Empty),
         }
-    }
-}
-
-impl Encodable for Payload {
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        Payload::to_bytes(self)
     }
 }
 
@@ -200,20 +190,5 @@ impl VersionPayload {
             .octets(),
             socket.port(),
         )
-    }
-}
-
-impl Encodable for VersionPayload {
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        VersionPayload::to_bytes(self)
-    }
-}
-
-impl Decodable for VersionPayload {
-    fn from_bytes(bytes: &[u8]) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        VersionPayload::from_bytes(bytes)
     }
 }

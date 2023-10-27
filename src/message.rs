@@ -5,13 +5,7 @@ use Ok;
 
 use super::errors::BTCP2PError;
 
-use super::{
-    command::Command,
-    encode::{Decodable, Encodable},
-    errors::Result,
-    network::Network,
-    payload::Payload,
-};
+use super::{command::Command, errors::Result, network::Network, payload::Payload};
 
 const START_STRING_SIZE: usize = 4;
 const COMMAND_NAME_SIZE: usize = 12;
@@ -48,7 +42,7 @@ impl Message {
         let mut buffer = Vec::with_capacity(HEADER_SIZE + payload_bytes.len());
 
         // start string char[4]
-        buffer.write_all(&self.network.to_bytes()?)?;
+        buffer.write_all(Network::to_bytes(self.network).as_slice())?;
 
         // command name char[12]
         let command_bytes = self.command.to_bytes()?;
@@ -120,20 +114,5 @@ impl Message {
         buffer.clone_from_slice(&hash[..CHECKSUM_SIZE]);
 
         buffer
-    }
-}
-
-impl Encodable for Message {
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        Message::to_bytes(self)
-    }
-}
-
-impl Decodable for Message {
-    fn from_bytes(bytes: &[u8]) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        Message::from_bytes(bytes)
     }
 }
