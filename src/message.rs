@@ -1,32 +1,21 @@
 use byteorder::{LittleEndian, ReadBytesExt, WriteBytesExt};
 use sha2::{Digest, Sha256};
 use std::io::Write;
-use Ok;
-
-use super::errors::BTCP2PError;
 
 use super::{
     command::Command,
-    encode::{Decodable, Encodable},
-    errors::Result,
+    errors::{BTCP2PError, Result},
     network::Network,
     payload::Payload,
+    CHECKSUM_SIZE, HEADER_CHECKSUM_RANGE, HEADER_COMMAND_NAME_RANGE, HEADER_PAYLOAD_LEN_RANGE,
+    HEADER_SIZE, HEADER_START_STRING_RANGE, MAX_PAYLOAD_SIZE,
 };
 
-const START_STRING_SIZE: usize = 4;
-const COMMAND_NAME_SIZE: usize = 12;
-const PAYLOAD_LEN_SIZE: usize = 4;
-const CHECKSUM_SIZE: usize = 4;
-const HEADER_SIZE: usize = START_STRING_SIZE + COMMAND_NAME_SIZE + PAYLOAD_LEN_SIZE + CHECKSUM_SIZE;
-
-// 32 MB
-const MAX_PAYLOAD_SIZE: usize = 32 * 1024 * 1024;
-
-const HEADER_START_STRING_RANGE: std::ops::Range<usize> = 0..4;
-const HEADER_COMMAND_NAME_RANGE: std::ops::Range<usize> = 4..16;
-const HEADER_PAYLOAD_LEN_RANGE: std::ops::Range<usize> = 16..20;
-const HEADER_CHECKSUM_RANGE: std::ops::Range<usize> = 20..24;
-
+/// Message represents a message in the BTC proto
+/// Contains the network, command and payload
+///
+/// All messages in the network protocol use the same container format, which provides a required multi-field message header and an optional payload.
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Message {
     pub network: Network,
     pub command: Command,
@@ -42,20 +31,19 @@ impl Message {
         }
     }
 
+    /// Converts the message to bytes
+    /// Bytes are contained in a Vec<u8>
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
         // buffer for the BTC proto: https://developer.bitcoin.org/reference/p2p_networking.html#message-headers
         let payload_bytes = self.payload.to_bytes()?;
         let mut buffer = Vec::with_capacity(HEADER_SIZE + payload_bytes.len());
 
         // start string char[4]
-        buffer.write_all(&self.network.to_bytes()?)?;
+        buffer.write_all(Network::to_bytes(self.network).as_slice())?;
 
         // command name char[12]
         let command_bytes = self.command.to_bytes()?;
         buffer.extend(&command_bytes);
-
-        // padding char[..]
-        (0..COMMAND_NAME_SIZE - command_bytes.len()).try_for_each(|_| buffer.write_u8(0x0))?;
 
         // payload length uint32 (4 bytes)
         buffer.write_u32::<LittleEndian>(payload_bytes.len() as u32)?;
@@ -71,6 +59,8 @@ impl Message {
         Ok(buffer)
     }
 
+    /// Converts bytes to a message
+    /// Bytes are contained in a slice of u8
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
         if bytes.len() < HEADER_SIZE {
             return Err(BTCP2PError::InvalidHeaderSize);
@@ -107,6 +97,7 @@ impl Message {
         })
     }
 
+    /// Calculates the checksum of the payload
     fn checksum(data: &[u8]) -> [u8; 4] {
         let mut hasher = Sha256::new();
         hasher.update(data);
@@ -123,17 +114,37 @@ impl Message {
     }
 }
 
-impl Encodable for Message {
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        Message::to_bytes(self)
-    }
-}
+#[cfg(test)]
+mod tests {
+    use crate::VersionPayload;
 
-impl Decodable for Message {
-    fn from_bytes(bytes: &[u8]) -> Result<Self>
-    where
-        Self: Sized,
-    {
-        Message::from_bytes(bytes)
+    use super::*;
+    use quickcheck::{Arbitrary, TestResult};
+    use quickcheck_macros::quickcheck;
+
+    impl Arbitrary for Message {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            let network = Network::arbitrary(g);
+            let command = Command::arbitrary(g);
+            let payload = match command {
+                Command::Version => Payload::Version(VersionPayload::arbitrary(g)),
+                Command::VerAck => Payload::VerAck,
+                Command::Ping => Payload::Ping(u64::arbitrary(g)),
+                Command::Pong => Payload::Pong(u64::arbitrary(g)),
+            };
+
+            Self {
+                network,
+                command,
+                payload,
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn test_to_bytes(message: Message) -> TestResult {
+        let bytes = message.to_bytes().unwrap();
+        let message2 = Message::from_bytes(&bytes).unwrap();
+        TestResult::from_bool(message == message2)
     }
 }

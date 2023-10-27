@@ -1,12 +1,18 @@
-use super::{
-    encode::{Decodable, Encodable},
-    errors::{BTCP2PError, Result},
-};
+use super::errors::{BTCP2PError, Result};
 
+/// Represents the network to which a message belongs.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Network {
+    /// Mainnet
+    /// Default Port 8333
     MainNet,
+
+    /// Testnet
+    /// Default Port 18333
     TestNet,
+
+    /// Regtest
+    /// Default Port 18444
     RegTest,
 }
 
@@ -29,36 +35,28 @@ impl Network {
     }
 }
 
-impl Encodable for Network {
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        Ok(Network::to_bytes(*self).to_vec())
-    }
-}
-
-impl Decodable for Network {
-    fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        Network::from_bytes(bytes)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quickcheck::{Arbitrary, TestResult};
+    use quickcheck_macros::quickcheck;
 
-    #[test]
-    fn test_to_bytes() {
-        assert_eq!(
-            Network::to_bytes(Network::MainNet),
-            [0xf9, 0xbe, 0xb4, 0xd9]
-        );
-        assert_eq!(
-            Network::to_bytes(Network::TestNet),
-            [0x0b, 0x11, 0x09, 0x07]
-        );
-        assert_eq!(
-            Network::to_bytes(Network::RegTest),
-            [0xfa, 0xbf, 0xb5, 0xda]
-        );
+    impl Arbitrary for Network {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            match u8::arbitrary(g) % 3 {
+                0 => Self::MainNet,
+                1 => Self::TestNet,
+                2 => Self::RegTest,
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn test_to_bytes(network: Network) -> TestResult {
+        let bytes = Network::to_bytes(network);
+        let network2 = Network::from_bytes(&bytes).unwrap();
+        TestResult::from_bool(network == network2)
     }
 
     #[test]

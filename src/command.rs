@@ -1,8 +1,9 @@
-use super::{
-    encode::{Decodable, Encodable},
-    errors::{BTCP2PError, Result},
-};
+use super::COMMAND_NAME_SIZE;
 
+use super::errors::{BTCP2PError, Result};
+
+/// Command represents a command in the BTC proto
+/// https://developer.bitcoin.org/reference/p2p_networking.html#message-headers
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Command {
     Version,
@@ -12,13 +13,24 @@ pub enum Command {
 }
 
 impl Command {
+    /// to_bytes converts the command to bytes
+    /// the bytes are the command name
+    /// bytes are padded with null bytes according to the protocol
+    /// https://developer.bitcoin.org/reference/p2p_networking.html#message-headers
     pub fn to_bytes(&self) -> Result<Vec<u8>> {
-        match self {
-            Command::Version => Ok("version".into()),
-            Command::VerAck => Ok("verack".into()),
-            Command::Ping => Ok("ping".into()),
-            Command::Pong => Ok("pong".into()),
+        let mut result = match self {
+            Command::Version => "version".to_string(),
+            Command::VerAck => "verack".to_string(),
+            Command::Ping => "ping".to_string(),
+            Command::Pong => "pong".to_string(),
+        };
+
+        // padding with null bytes
+        for _ in 0..COMMAND_NAME_SIZE - result.len() {
+            result.push('\0');
         }
+
+        Ok(result.as_bytes().to_vec())
     }
 
     pub fn from_bytes(bytes: &[u8]) -> Result<Self> {
@@ -34,40 +46,29 @@ impl Command {
     }
 }
 
-impl Encodable for Command {
-    fn to_bytes(&self) -> Result<Vec<u8>> {
-        Command::to_bytes(self)
-    }
-}
-
-impl Decodable for Command {
-    fn from_bytes(bytes: &[u8]) -> Result<Self> {
-        Command::from_bytes(bytes)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
+    use quickcheck::{Arbitrary, TestResult};
+    use quickcheck_macros::quickcheck;
 
-    #[test]
-    fn test_to_bytes() {
-        assert_eq!(
-            Command::to_bytes(&Command::Version).unwrap(),
-            "version".as_bytes(),
-        );
-        assert_eq!(
-            Command::to_bytes(&Command::VerAck).unwrap(),
-            "verack".as_bytes(),
-        );
-        assert_eq!(
-            Command::to_bytes(&Command::Ping).unwrap(),
-            "ping".as_bytes(),
-        );
-        assert_eq!(
-            Command::to_bytes(&Command::Pong).unwrap(),
-            "pong".as_bytes(),
-        );
+    impl Arbitrary for Command {
+        fn arbitrary(g: &mut quickcheck::Gen) -> Self {
+            match u8::arbitrary(g) % 4 {
+                0 => Self::Version,
+                1 => Self::VerAck,
+                2 => Self::Ping,
+                3 => Self::Pong,
+                _ => unreachable!(),
+            }
+        }
+    }
+
+    #[quickcheck]
+    fn test_to_bytes(command: Command) -> TestResult {
+        let bytes = command.to_bytes().unwrap();
+        let command2 = Command::from_bytes(&bytes).unwrap();
+        TestResult::from_bool(command == command2)
     }
 
     #[test]
