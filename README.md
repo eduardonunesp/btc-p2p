@@ -4,9 +4,18 @@
 This is a simple lib for the Bitcoin network. It is used to establish a connection between two nodes and to exchange information about the current state of the node.
 
 ## Run
+To run the handshake example, run the following command:
 
 ```bash
 cargo run --example handshake
+```
+
+## Docker version
+It is possible to run the handshake example in a docker container. To do so, run the following commands:
+
+```bash
+docker build -t btc_handshake:latest .
+docker run --rm btc_handshake:latest
 ```
 
 ## Protocol
